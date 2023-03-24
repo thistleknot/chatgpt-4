@@ -1,38 +1,73 @@
-from collections import namedtuple
-import altair as alt
-import math
-import pandas as pd
+import openai
 import streamlit as st
+import os
 
-"""
-# Welcome to Streamlit!
+openai.api_key = st.text_input("Enter OpenAI API Key")
 
-Edit `/streamlit_app.py` to customize this app to your heart's desire :heart:
+if "default" not in st.session_state:
+    st.session_state["default"] = "User:\n\n"
 
-If you have any questions, checkout our [documentation](https://docs.streamlit.io) and [community
-forums](https://discuss.streamlit.io).
+st.title('System: You are a helpful assistant.')
+    
+prompts = st.text_area(
+    "Input prompt", value=st.session_state["default"], height=500
+)
 
-In the meantime, below is an example of what you can do with just a few lines of code:
-"""
+models = ['gpt-3.5-turbo', 'text-davinci-003', 'gpt-4']
+model = st.sidebar.selectbox("Select Model", models)
 
+with st.sidebar:
+    if ((model == 'gpt-3.5-turbo') or (model == 'text-davinci-003')):
+        max_ = 4096
+    else:
+        max_ = 8192
+    st.subheader("Advanced Settings")
+    temperature = st.slider("Temperature", min_value=0.1, max_value=1.0, value=0.7, step=0.1)
+    
+    max_tokens = st.slider("Max Tokens", min_value=64, max_value=max_, value=1024, step=64)
+    top_p = st.slider("Top P", min_value=0.1, max_value=1.0, value=1.0, step=0.1)
+    frequency_penalty = st.slider("Frequency Penalty", min_value=0.0, max_value=1.0, value=0.0, step=0.1)
+    presence_penalty = st.slider("Presence Penalty", min_value=0.0, max_value=1.0, value=0.0, step=0.1)
+    n = st.slider("n", min_value=1, max_value=5, value=1, step=1)
+    
+    # Add best_of option for text-davinci-003
+    if model == 'text-davinci-003':
+        best_of = st.slider("Best Of", min_value=1, max_value=5, value=1, step=1)
 
-with st.echo(code_location='below'):
-    total_points = st.slider("Number of points in spiral", 1, 5000, 2000)
-    num_turns = st.slider("Number of turns in spiral", 1, 100, 9)
+if st.button('Submit'):
+    prompts = 'System: You are a helpful assistant:\n\n'+prompts+'\n\nAssistant:\n\n'
+    
+    if model == 'text-davinci-003':
+        response = openai.Completion.create(
+        engine=model,
+        prompt=prompts,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        top_p=top_p,
+        frequency_penalty=frequency_penalty,
+        presence_penalty=presence_penalty,
+        n=n,
+        best_of=best_of
+    )
+        response_output = response['choices'][0]['text']
+    else:
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=[{"role": "user", "content": prompts}],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            frequency_penalty=frequency_penalty,
+            presence_penalty=presence_penalty,
+            n=n
+        )
+        response_output = response['choices'][0]['message']['content']
 
-    Point = namedtuple('Point', 'x y')
-    data = []
+    print(response)
+    
+    st.session_state["default"] = prompts.lstrip('System: You are a helpful assistant:\n\n') + response_output + '\n\nUser:\n\n'
+    st.experimental_rerun()
 
-    points_per_turn = total_points / num_turns
-
-    for curr_point_num in range(total_points):
-        curr_turn, i = divmod(curr_point_num, points_per_turn)
-        angle = (curr_turn + 1) * 2 * math.pi * i / points_per_turn
-        radius = curr_point_num / total_points
-        x = radius * math.cos(angle)
-        y = radius * math.sin(angle)
-        data.append(Point(x, y))
-
-    st.altair_chart(alt.Chart(pd.DataFrame(data), height=500, width=500)
-        .mark_circle(color='#0068c9', opacity=0.5)
-        .encode(x='x:Q', y='y:Q'))
+if st.button('Reset'):
+    st.session_state["default"] = ""
+    st.experimental_rerun()
